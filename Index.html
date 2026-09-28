@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cautio: Geospatial Radar & Telemetry</title>
+  <link rel="icon" type="image/svg+xml" href="/cautio-logo.svg" />
+  
+  <!-- Modern Font Styles -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <!-- Leaflet & MarkerCluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+  <!-- Leaflet & MarkerCluster JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  
+  <!-- PapaParse for fast CSV parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="theme-cockpit theme-bubble-hud">
+  <!-- Cautio Ambient Liquid Glass Caustics Canvas -->
+  <div class="liquid-ambient-backdrop" aria-hidden="true">
+    <div class="liquid-orb orb-mint"></div>
+    <div class="liquid-orb orb-jade"></div>
+    <div class="liquid-orb orb-emerald"></div>
+    <div class="liquid-orb orb-rose"></div>
+    <div class="liquid-mesh-glow"></div>
+  </div>
+
+  <div id="app" class="fullscreen-cockpit-layout">
+
+    <!-- ======================================================================
+         FULL-SCREEN MAP & ADAS CANVAS STAGE (100vw x 100vh)
+         ====================================================================== -->
+    <div class="stage-display-wrapper full-bleed-stage" id="stageWrapper">
+
+      <!-- 1. MAP VIEW LAYER (FULL-BLEED CANVAS) -->
+      <div id="mapViewContainer" class="stage-layer active-layer">
+        <div id="cautioMap"></div>
+
+        <!-- Floating Top Controls for Fullscreen Mode -->
+        <div class="map-floating-top-hud" id="mapTopFloatingHud">
+          <button id="btnExitFullscreenOverlay" class="glass-pill-btn" title="Exit Fullscreen Map (Esc)">
+            <i class="fa-solid fa-compress"></i> <span>Exit Fullscreen</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ======================================================================
+         FLOATING LIQUID GLASS BUBBLES (PERIMETER HUD SYSTEM)
+         ====================================================================== -->
+
+    <!-- Bubble 1: Top-Left Brand Capsule -->
+    <div class="glass-bubble bubble-top-left" id="brandBubble">
+      <a href="https://www.cautio.com" target="_blank" rel="noopener noreferrer" class="brand-logo-pill" title="Cautio">
+        <img src="/cautio-logo.svg" alt="Cautio" class="cautio-brand-logo" />
+      </a>
+    </div>
+
+    <!-- Bubble 2: Top-Center Executive Insights Command Island -->
+    <div class="glass-bubble bubble-top-center" id="metricsBubble">
+      <div class="metric-chip" id="chipFleetSize" title="Active Fleet Monitored">
+        <span class="chip-label"><i class="fa-solid fa-truck-fast"></i> FLEET</span>
+        <span class="chip-val highlight" id="activeFleetCount">--</span>
+      </div>
+      <div class="metric-chip" id="chipCompliance" title="Statutory Compliance Rate">
+        <span class="chip-label"><i class="fa-solid fa-shield-halved"></i> COMPLIANT</span>
+        <span class="chip-val highlight-emerald" id="complianceRateDisplay">--%</span>
+      </div>
+      <div class="metric-chip" id="chipInfractions" title="Violations Detected">
+        <span class="chip-label"><i class="fa-solid fa-triangle-exclamation"></i> VIOLATIONS</span>
+        <span class="chip-val highlight-rose" id="infractionsCount">--</span>
+      </div>
+      <div class="metric-chip" id="chipMeanSpeed" title="Mean Velocity Across Fleets">
+        <span class="chip-label"><i class="fa-solid fa-gauge"></i> AVG SPEED</span>
+        <span class="chip-val highlight-mint" id="meanSpeedDisplay">-- km/h</span>
+      </div>
+      <div class="metric-chip" id="chipPeakSpeed" title="Peak Velocity Recorded">
+        <span class="chip-label"><i class="fa-solid fa-bolt"></i> PEAK</span>
+        <span class="chip-val highlight-amber" id="peakSpeedDisplay">-- km/h</span>
+      </div>
+      <div class="metric-chip" id="chipTopOffender" title="Highest Speeding Vehicle (Click to Zoom on Map)">
+        <span class="chip-label"><i class="fa-solid fa-car-burst"></i> TOP OFFENDER</span>
+        <span class="chip-val highlight-rose" id="topOffenderDisplay">--</span>
+      </div>
+      <div class="metric-chip" id="chipRiskOrg" title="Top Infraction Operator">
+        <span class="chip-label"><i class="fa-solid fa-building-shield"></i> TOP RISK</span>
+        <span class="chip-val highlight-amber" id="topRiskOrgDisplay">--</span>
+      </div>
+      <button class="insights-toggle-btn" id="btnToggleTopInsights" title="Toggle Detailed Telemetry Insights">
+        <i class="fa-solid fa-chart-pie"></i>
+        <span>INSIGHTS</span>
+        <i class="fa-solid fa-chevron-down" id="insightsChevron"></i>
+      </button>
+    </div>
+
+    <!-- Bubble 3: Top-Right Actions Cluster -->
+    <div class="glass-bubble-cluster bubble-top-right" id="actionsBubble">
+      <button id="exportCsvBtn" class="bubble-btn btn-mint" title="Download Overspeed CSV (MAP2 Spec)">
+        <span>📥</span>
+        <span class="bubble-btn-text">Export CSV</span>
+      </button>
+      <button id="btnFullscreenMap" class="bubble-btn" title="Toggle True Fullscreen (F)">
+        <i class="fa-solid fa-expand"></i>
+      </button>
+      <button id="btnToggleHudVisibility" class="bubble-btn" title="Toggle Zen Mode (Hide/Show Bubbles - H)">
+        <i class="fa-solid fa-eye" id="hudEyeIcon"></i>
+      </button>
+    </div>
+
+    <!-- Bubble 4: Bottom-Center Map Controls Deck -->
+    <div class="glass-bubble bubble-bottom-center" id="controlsBubble">
+      <div id="mapToolbarControls" class="mode-controls active-controls">
+        <div class="threshold-slider-inline">
+          <span class="ctl-label"><i class="fa-solid fa-gauge-high"></i> THRESHOLD:</span>
+          <span class="badge-threshold" id="threshDisplay">> 90 km/h</span>
+          <input type="range" id="speedThresholdSlider" min="60" max="130" step="1" value="90" />
+        </div>
+        <div class="org-selector-inline">
+          <select id="orgFilterSelect" class="hud-select">
+            <option value="ALL">All Fleets</option>
+          </select>
+        </div>
+        <button id="uploadCsvBtn" class="sub-btn" title="Upload Custom Cautio CSV Telemetry">
+          <i class="fa-solid fa-upload"></i> Upload CSV
+        </button>
+        <input type="file" id="csvFileInput" accept=".csv,.xlsx" style="display:none;" />
+      </div>
+    </div>
+
+    <!-- Bubble 5: Bottom-Right Telemetry & Violations Pop-up Hub -->
+    <div class="glass-bubble-cluster bubble-bottom-right" id="hubBubble">
+      <button id="btnOpenTelemetryModal" class="bubble-orb-btn" title="Open Fleet Telemetry Matrix">
+        <i class="fa-solid fa-satellite-dish"></i>
+        <span>Telemetry</span>
+      </button>
+      <button id="btnOpenViolationsModal" class="bubble-orb-btn btn-orb-rose" title="Open Radar Violations Feed">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span>Violations</span>
+        <span class="badge-mini-count" id="navViolationsCount">0</span>
+      </button>
+    </div>
+
+    <!-- Bubble 6: Bottom-Left Footbar Info Badge -->
+    <div class="glass-bubble bubble-bottom-left" id="footInfoBubble">
+      <span class="lbl">ACTIVE:</span>
+      <span class="val highlight" id="activeEngineLabel">Geospatial Telemetry Matrix</span>
+    </div>
+
+    <!-- ======================================================================
+         FROSTED LIQUID GLASS MODAL POPUPS (TELEMETRY & VIOLATIONS)
+         ====================================================================== -->
+
+    
+    <!-- ======================================================================
+         TOP LIQUID GLASS INSIGHTS DRAWER (EXPANDABLE FROM TOP BAR)
+         ====================================================================== -->
+    <div class="top-insights-drawer" id="topInsightsDrawer" aria-hidden="true">
+      <div class="drawer-liquid-card">
+        <div class="drawer-header">
+          <div class="drawer-title">
+            <i class="fa-solid fa-chart-line text-mint"></i>
+            <span>FLEET TELEMETRY INTELLIGENCE & INSIGHTS</span>
+            <span class="live-dot"></span>
+          </div>
+          <button class="drawer-close-btn" id="btnCloseTopInsights" title="Close Insights">&times;</button>
+        </div>
+
+        <div class="drawer-body">
+          <!-- 1. Top Insights KPI Strip -->
+          <div class="drawer-kpi-row">
+            <div class="drawer-kpi-item">
+              <span class="kpi-tag">TOTAL FLEET</span>
+              <span class="kpi-num" id="drawerTotalUnits">--</span>
+              <span class="kpi-desc">Vehicles Active</span>
+            </div>
+            <div class="drawer-kpi-item kpi-accent-mint">
+              <span class="kpi-tag">COMPLIANT</span>
+              <span class="kpi-num text-emerald" id="drawerCompliantUnits">--</span>
+              <span class="kpi-desc" id="drawerCompliancePct">--% Rate</span>
+            </div>
+            <div class="drawer-kpi-item kpi-accent-rose">
+              <span class="kpi-tag">STATUTORY INFRACTIONS</span>
+              <span class="kpi-num text-rose" id="drawerInfractionsUnits">--</span>
+              <span class="kpi-desc" id="drawerInfractionThreshold">> 90 km/h</span>
+            </div>
+            <div class="drawer-kpi-item">
+              <span class="kpi-tag">MEAN VELOCITY</span>
+              <span class="kpi-num text-mint" id="drawerMeanSpeed">-- km/h</span>
+              <span class="kpi-desc">Fleet Average</span>
+            </div>
+            <div class="drawer-kpi-item kpi-accent-amber">
+              <span class="kpi-tag">PEAK SPEED</span>
+              <span class="kpi-num text-amber" id="drawerPeakSpeed">-- km/h</span>
+              <span class="kpi-desc" id="drawerFastestVehicle">--</span>
+            </div>
+          </div>
+
+          <!-- 2. Speed Compliance Spectrum Bar -->
+          <div class="spectrum-section">
+            <div class="spectrum-header">
+              <span class="spectrum-title"><i class="fa-solid fa-gauge-simple-high"></i> SPEED COMPLIANCE SPECTRUM</span>
+              <div class="spectrum-legend">
+                <span class="legend-item"><span class="legend-dot dot-emerald"></span> Compliant (≤ threshold)</span>
+                <span class="legend-item"><span class="legend-dot dot-amber"></span> Warning (91-110 km/h)</span>
+                <span class="legend-item"><span class="legend-dot dot-rose"></span> Critical (> 110 km/h)</span>
+              </div>
+            </div>
+            <div class="spectrum-bar-wrap">
+              <div class="spectrum-segment seg-compliant" id="specCompliantSeg" style="width: 70%;"></div>
+              <div class="spectrum-segment seg-warning" id="specWarningSeg" style="width: 20%;"></div>
+              <div class="spectrum-segment seg-critical" id="specCriticalSeg" style="width: 10%;"></div>
+            </div>
+            <div class="spectrum-stats" id="spectrumStatsText">
+              Loading speed distribution spectrum...
+            </div>
+          </div>
+
+          <!-- 3. Top Speeders & High-Risk Organizations Grid -->
+          <div class="drawer-deep-grid">
+            <!-- Top Speeding Units Spotlight -->
+            <div class="drawer-deep-col">
+              <div class="col-title"><i class="fa-solid fa-bolt text-amber"></i> TOP RECORDED VELOCITIES</div>
+              <div class="top-speeders-list" id="topSpeedersList">
+                <!-- Dynamically injected top speeders with 1-click zoom -->
+              </div>
+            </div>
+
+            <!-- Risk by Operator / Org -->
+            <div class="drawer-deep-col">
+              <div class="col-title"><i class="fa-solid fa-building-shield text-mint"></i> FLEET OPERATOR COMPLIANCE</div>
+              <div class="operator-risk-list" id="operatorRiskList">
+                <!-- Dynamically injected operator compliance ratios -->
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- 1. Telemetry Matrix Pop-up Modal -->
+    <div id="telemetryModal" class="glass-modal-backdrop" aria-hidden="true">
+      <div class="glass-modal-card">
+        <div class="modal-header">
+          <div class="modal-title">
+            <span class="header-icon"><i class="fa-solid fa-satellite-dish"></i></span>
+            <h3>FLEET TELEMETRY MATRIX</h3>
+            <span class="live-dot"></span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseTelemetryModal" title="Close (Esc)">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- KPI Cards Grid -->
+          <div class="kpi-mini-grid">
+            <div class="kpi-mini-box">
+              <div class="kpi-mini-lbl">MONITORED UNITS</div>
+              <div class="kpi-mini-val" id="cardTotalUnits">--</div>
+            </div>
+            <div class="kpi-mini-box kpi-danger">
+              <div class="kpi-mini-lbl">VIOLATING UNITS</div>
+              <div class="kpi-mini-val highlight-rose" id="cardViolatingUnits">--</div>
+            </div>
+            <div class="kpi-mini-box">
+              <div class="kpi-mini-lbl">FLEET MEAN VELOCITY</div>
+              <div class="kpi-mini-val" id="cardMeanSpeed">-- km/h</div>
+            </div>
+            <div class="kpi-mini-box kpi-danger">
+              <div class="kpi-mini-lbl">PEAK FLEET SPEED</div>
+              <div class="kpi-mini-val highlight-amber" id="cardPeakSpeed">-- km/h</div>
+            </div>
+          </div>
+
+          <!-- Speed Gauge Visualization -->
+          <div class="gauge-card">
+            <div class="gauge-visual">
+              <svg class="speed-ring" viewBox="0 0 100 100">
+                <circle class="ring-bg" cx="50" cy="50" r="42"></circle>
+                <circle class="ring-progress" id="speedSvgRing" cx="50" cy="50" r="42"></circle>
+              </svg>
+              <div class="ring-center-info">
+                <span class="ring-speed-num" id="gaugeSpeedNum">90</span>
+                <span class="ring-speed-sub">KM/H LIMIT</span>
+              </div>
+            </div>
+            <div class="gauge-footer-label" id="fastestUnitLabel">Fastest Unit: --</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Radar Violations Feed Pop-up Modal -->
+    <div id="violationsModal" class="glass-modal-backdrop" aria-hidden="true">
+      <div class="glass-modal-card modal-card-wide">
+        <div class="modal-header">
+          <div class="modal-title">
+            <span class="header-icon"><i class="fa-solid fa-list-check"></i></span>
+            <h3>RADAR VIOLATIONS FEED</h3>
+            <div class="incident-badge-count" id="violationsBadge">0 INFRACTIONS</div>
+          </div>
+          <button class="modal-close-btn" id="btnCloseViolationsModal" title="Close (Esc)">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="incident-list-container modal-incident-list" id="violationsList">
+            <div class="empty-log-state">
+              <span>🛡️</span>
+              <p>Loading CAUTIO fleet overspeed telemetry...</p>
+            </div>
+          </div>
+
+          <div class="log-actions-bar">
+            <button id="exportCsvBottomBtn" class="sub-btn">📥 Export CSV Report</button>
+            <button id="reloadZingbusBtn" class="sub-btn">🔄 Reset Zingbus Data</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Vite Module Entry -->
+  <script type="module" src="/scripts/scripts.js"></script>
+</body>
+</html>
