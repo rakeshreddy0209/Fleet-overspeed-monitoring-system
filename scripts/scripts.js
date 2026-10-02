@@ -9,12 +9,107 @@ const state = {
   statutoryThreshold: 90,
   cleansedRecords: [],
   selectedOrg: 'ALL',
+  searchQuery: '',
+  violationsSearchQuery: '',
   map: null,
   markerCluster: null,
   markers: [],
   logoOverlay: null,
   fastestRecord: null
 };
+
+// Helper: Determine appropriate vehicle icon based on fleet/organization
+function getVehicleIconClass(org = '', vehicle = '') {
+  const o = String(org || '').toLowerCase();
+  if (o.includes('bus') || o.includes('zing') || o.includes('coach')) return 'fa-bus-simple';
+  if (o.includes('truck') || o.includes('express') || o.includes('freight') || o.includes('logistics') || o.includes('green cell')) return 'fa-truck-fast';
+  if (o.includes('shoffr') || o.includes('cab') || o.includes('taxi') || o.includes('euro')) return 'fa-car-side';
+  if (o.includes('cityflo') || o.includes('infant') || o.includes('van') || o.includes('shuttle')) return 'fa-van-shuttle';
+  return 'fa-car-side';
+}
+
+// Helper: Create custom animated vehicle radar marker for Leaflet
+function createVehicleIcon(item, severityClass) {
+  const iconClass = getVehicleIconClass(item.org, item.vehicle);
+  const speedInt = Math.round(item.speed);
+  
+  return L.divIcon({
+    className: 'cautio-vehicle-marker-wrapper',
+    html: `
+      <div class="cautio-vehicle-marker ${severityClass}" data-veh="${item.vehicle}" title="${item.vehicle} - ${item.org} (${item.speed.toFixed(1)} km/h)">
+        <div class="veh-radar-ping"></div>
+        <div class="veh-marker-card">
+          <div class="veh-icon-wrapper">
+            <i class="fa-solid ${iconClass} veh-glyph"></i>
+          </div>
+          <span class="veh-speed-pill">${speedInt}</span>
+        </div>
+        <div class="veh-marker-needle"></div>
+      </div>
+    `,
+    iconSize: [52, 36],
+    iconAnchor: [26, 34],
+    popupAnchor: [0, -34]
+  });
+}
+
+// Helper: Real-time Client Search Suggestions
+function updateClientSearchSuggestions() {
+  const suggestionsEl = document.getElementById('clientSearchSuggestions');
+  const inputEl = document.getElementById('clientSearchInput');
+  if (!suggestionsEl || !inputEl) return;
+
+  const query = (inputEl.value || '').trim().toLowerCase();
+  const threshold = Math.max(90.0, state.statutoryThreshold || 90.0);
+  const activeRecords = state.cleansedRecords.filter(r => r.speed > threshold);
+
+  const orgMap = {};
+  activeRecords.forEach(r => {
+    if (!orgMap[r.org]) {
+      orgMap[r.org] = { name: r.org, count: 0, maxSpeed: 0 };
+    }
+    orgMap[r.org].count++;
+    if (r.speed > orgMap[r.org].maxSpeed) orgMap[r.org].maxSpeed = r.speed;
+  });
+
+  const orgList = Object.values(orgMap);
+  const filtered = query === '' 
+    ? orgList.sort((a, b) => b.count - a.count).slice(0, 6)
+    : orgList.filter(o => o.name.toLowerCase().includes(query)).slice(0, 6);
+
+  if (filtered.length === 0) {
+    suggestionsEl.innerHTML = `<div class="search-suggestion-empty">No clients found matching "${query}"</div>`;
+    suggestionsEl.style.display = 'block';
+    return;
+  }
+
+  let html = '';
+  filtered.forEach(org => {
+    html += `
+      <div class="search-suggestion-item" data-org="${org.name}">
+        <span class="search-suggestion-name">
+          <i class="fa-solid fa-building-shield"></i> ${org.name}
+        </span>
+        <span class="search-suggestion-count">${org.count} Violations</span>
+      </div>
+    `;
+  });
+
+  suggestionsEl.innerHTML = html;
+  suggestionsEl.style.display = 'block';
+
+  suggestionsEl.querySelectorAll('.search-suggestion-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const orgName = item.dataset.org;
+      inputEl.value = orgName;
+      state.searchQuery = orgName;
+      const btnClear = document.getElementById('btnClearSearch');
+      if (btnClear) btnClear.style.display = 'flex';
+      suggestionsEl.style.display = 'none';
+      renderRadarMap();
+    });
+  });
+}
 
 // Interactive Helper: Focus Marker and Open Alert Details Popup
 function focusAndOpenMarker(item) {
@@ -210,6 +305,7 @@ function processTelemetryData(records) {
     orgFilterSelect.value = state.selectedOrg;
   }
 
+  updateClientSearchSuggestions();
   renderRadarMap();
 }
 
@@ -227,6 +323,15 @@ function renderRadarMap() {
   let filtered = state.cleansedRecords;
   if (state.selectedOrg !== 'ALL') {
     filtered = filtered.filter(r => r.org === state.selectedOrg);
+  }
+
+  // Filter by client or vehicle search query
+  if (state.searchQuery && state.searchQuery.trim() !== '') {
+    const q = state.searchQuery.trim().toLowerCase();
+    filtered = filtered.filter(r => 
+      r.org.toLowerCase().includes(q) || 
+      r.vehicle.toLowerCase().includes(q)
+    );
   }
 
   // Filter ONLY vehicles strictly exceeding statutory threshold (> threshold, where threshold >= 90)
@@ -254,27 +359,21 @@ function renderRadarMap() {
     orgStats[item.org].violations++;
     if (item.speed > orgStats[item.org].maxSpeed) orgStats[item.org].maxSpeed = item.speed;
 
-    // Marker styling for speed > 90 ONLY:
+    // Severity styling for speed > 90 ONLY:
     // 90-100: Amber, 100-110: Red, >110: Flashing Crimson
     const isExtreme = item.speed > 110.0;
     const isHigh = item.speed > 100.0;
-    const markerColor = isExtreme ? '#dc2626' : (isHigh ? '#ef4444' : '#f59e0b');
-    const radius = isExtreme ? 9 : (isHigh ? 8 : 7);
+    const severityTitle = isExtreme ? 'CRITICAL VIOLATION' : (isHigh ? 'HIGH VIOLATION' : 'MODERATE VIOLATION');
+    const severityClass = isExtreme ? 'severity-critical' : (isHigh ? 'severity-high' : 'severity-moderate');
 
-    const marker = L.circleMarker([item.lat, item.lon], {
-      radius: radius,
-      fillColor: markerColor,
-      color: '#ffffff',
-      weight: 1.8,
-      opacity: 0.95,
-      fillOpacity: 0.88
+    // Replace plain dot with custom vehicle icon marker
+    const marker = L.marker([item.lat, item.lon], {
+      icon: createVehicleIcon(item, severityClass)
     });
 
     const overspeedDelta = (item.speed - threshold).toFixed(1);
     const speedPercent = Math.min(100, Math.max(10, ((item.speed - 60) / (140 - 60)) * 100));
     const limitPercent = Math.min(100, Math.max(10, ((threshold - 60) / (140 - 60)) * 100));
-    const severityTitle = isExtreme ? 'CRITICAL VIOLATION' : (isHigh ? 'HIGH VIOLATION' : 'MODERATE VIOLATION');
-    const severityClass = isExtreme ? 'severity-critical' : (isHigh ? 'severity-high' : 'severity-moderate');
 
     const popupHtml = `
       <div class="cautio-alert-card">
@@ -606,18 +705,27 @@ function renderRadarMap() {
 function renderViolationsFeed(infractions) {
   if (!violationsList) return;
 
-  if (infractions.length === 0) {
+  let displayInfractions = infractions;
+  if (state.violationsSearchQuery && state.violationsSearchQuery.trim() !== '') {
+    const vq = state.violationsSearchQuery.trim().toLowerCase();
+    displayInfractions = infractions.filter(r => 
+      r.org.toLowerCase().includes(vq) || 
+      r.vehicle.toLowerCase().includes(vq)
+    );
+  }
+
+  if (displayInfractions.length === 0) {
     violationsList.innerHTML = `
       <div class="empty-state">
         <i class="fa-solid fa-circle-check" style="font-size:2rem; color:var(--cautio-mint); margin-bottom:10px;"></i>
-        <p>No statutory infractions logged above ${state.statutoryThreshold} km/h.</p>
+        <p>${state.violationsSearchQuery ? `No infractions found matching "${state.violationsSearchQuery}".` : `No statutory infractions logged above ${state.statutoryThreshold} km/h.`}</p>
       </div>
     `;
     return;
   }
 
   let html = '';
-  infractions.sort((a, b) => b.speed - a.speed).forEach(item => {
+  displayInfractions.sort((a, b) => b.speed - a.speed).forEach(item => {
     const isExtreme = item.speed > 110;
     const isHigh = item.speed > 100;
     const severityClass = isExtreme ? 'severity-critical' : (isHigh ? 'severity-high' : 'severity-moderate');
@@ -785,6 +893,107 @@ if (orgFilterSelect) {
   orgFilterSelect.addEventListener('change', (e) => {
     state.selectedOrg = e.target.value;
     renderRadarMap();
+  });
+}
+
+// Client Search Bar Controller
+const clientSearchInput = document.getElementById('clientSearchInput');
+const btnClearSearch = document.getElementById('btnClearSearch');
+const clientSearchSuggestions = document.getElementById('clientSearchSuggestions');
+const clientSearchWrapper = document.getElementById('clientSearchWrapper');
+
+if (clientSearchInput) {
+  clientSearchInput.addEventListener('input', (e) => {
+    state.searchQuery = e.target.value;
+    if (btnClearSearch) {
+      btnClearSearch.style.display = state.searchQuery ? 'flex' : 'none';
+    }
+    updateClientSearchSuggestions();
+    renderRadarMap();
+  });
+
+  clientSearchInput.addEventListener('focus', () => {
+    updateClientSearchSuggestions();
+  });
+
+  clientSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      clientSearchInput.value = '';
+      state.searchQuery = '';
+      if (btnClearSearch) btnClearSearch.style.display = 'none';
+      if (clientSearchSuggestions) clientSearchSuggestions.style.display = 'none';
+      renderRadarMap();
+      clientSearchInput.blur();
+    } else if (e.key === 'Enter') {
+      if (clientSearchSuggestions) {
+        const firstItem = clientSearchSuggestions.querySelector('.search-suggestion-item');
+        if (firstItem) {
+          firstItem.click();
+        } else {
+          clientSearchSuggestions.style.display = 'none';
+        }
+      }
+    }
+  });
+}
+
+if (btnClearSearch) {
+  btnClearSearch.addEventListener('click', () => {
+    if (clientSearchInput) clientSearchInput.value = '';
+    state.searchQuery = '';
+    btnClearSearch.style.display = 'none';
+    if (clientSearchSuggestions) clientSearchSuggestions.style.display = 'none';
+    renderRadarMap();
+  });
+}
+
+// Close search suggestions on outside click
+document.addEventListener('click', (e) => {
+  if (clientSearchWrapper && !clientSearchWrapper.contains(e.target)) {
+    if (clientSearchSuggestions) clientSearchSuggestions.style.display = 'none';
+  }
+});
+
+// Violations Modal Search Filter
+const violationsSearchInput = document.getElementById('violationsSearchInput');
+const btnClearViolationsSearch = document.getElementById('btnClearViolationsSearch');
+
+if (violationsSearchInput) {
+  violationsSearchInput.addEventListener('input', (e) => {
+    state.violationsSearchQuery = e.target.value;
+    if (btnClearViolationsSearch) {
+      btnClearViolationsSearch.style.display = state.violationsSearchQuery ? 'block' : 'none';
+    }
+    const threshold = Math.max(90.0, state.statutoryThreshold || 90.0);
+    let filtered = state.cleansedRecords;
+    if (state.selectedOrg !== 'ALL') {
+      filtered = filtered.filter(r => r.org === state.selectedOrg);
+    }
+    if (state.searchQuery && state.searchQuery.trim() !== '') {
+      const q = state.searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(r => r.org.toLowerCase().includes(q) || r.vehicle.toLowerCase().includes(q));
+    }
+    const infractions = filtered.filter(item => item.speed > threshold);
+    renderViolationsFeed(infractions);
+  });
+}
+
+if (btnClearViolationsSearch) {
+  btnClearViolationsSearch.addEventListener('click', () => {
+    if (violationsSearchInput) violationsSearchInput.value = '';
+    state.violationsSearchQuery = '';
+    btnClearViolationsSearch.style.display = 'none';
+    const threshold = Math.max(90.0, state.statutoryThreshold || 90.0);
+    let filtered = state.cleansedRecords;
+    if (state.selectedOrg !== 'ALL') {
+      filtered = filtered.filter(r => r.org === state.selectedOrg);
+    }
+    if (state.searchQuery && state.searchQuery.trim() !== '') {
+      const q = state.searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(r => r.org.toLowerCase().includes(q) || r.vehicle.toLowerCase().includes(q));
+    }
+    const infractions = filtered.filter(item => item.speed > threshold);
+    renderViolationsFeed(infractions);
   });
 }
 

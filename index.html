@@ -129,6 +129,26 @@
           <span class="badge-threshold" id="threshDisplay">> 90 km/h</span>
           <input type="range" id="speedThresholdSlider" min="90" max="150" step="1" value="90" />
         </div>
+
+        <!-- Search Client Names & Fleets with Instant Suggestions -->
+        <div class="client-search-inline" id="clientSearchWrapper">
+          <div class="search-input-field">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input 
+              type="text" 
+              id="clientSearchInput" 
+              class="hud-search-input" 
+              placeholder="Search Client Name..." 
+              autocomplete="off" 
+              spellcheck="false" 
+            />
+            <button id="btnClearSearch" class="search-clear-btn" title="Clear Search (Esc)" style="display: none;">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+          <div class="client-search-suggestions" id="clientSearchSuggestions" style="display: none;"></div>
+        </div>
+
         <div class="org-selector-inline">
           <select id="orgFilterSelect" class="hud-select">
             <option value="ALL">All Fleets</option>
@@ -316,6 +336,12 @@
         </div>
 
         <div class="modal-body">
+          <div class="modal-search-bar-wrap">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="violationsSearchInput" class="modal-search-input" placeholder="Filter by Client Name or Vehicle No..." autocomplete="off" />
+            <button id="btnClearViolationsSearch" class="modal-search-clear" style="display:none;" title="Clear filter">&times;</button>
+          </div>
+
           <div class="incident-list-container modal-incident-list" id="violationsList">
             <div class="empty-log-state">
               <span>🛡️</span>
