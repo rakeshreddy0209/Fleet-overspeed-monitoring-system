@@ -273,18 +273,481 @@ html, body {
   margin-right: 20px !important;
 }
 
-.leaflet-popup-content-wrapper {
-  background: var(--glass-bg-elevated) !important;
+/* ==========================================================================
+   LEAFLET CUSTOM DARK GLASS POPUP ENGINE
+   ========================================================================== */
+
+.cautio-dark-popup .leaflet-popup-content-wrapper {
+  background: rgba(10, 16, 13, 0.98) !important;
   backdrop-filter: var(--glass-blur-heavy) !important;
   -webkit-backdrop-filter: var(--glass-blur-heavy) !important;
-  border: 1px solid rgba(148, 236, 142, 0.5) !important;
-  border-radius: 14px !important;
+  border: 1px solid rgba(148, 236, 142, 0.45) !important;
+  border-radius: 16px !important;
   color: #f8fafc !important;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.9), inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.95), 0 0 24px rgba(148, 236, 142, 0.18) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
 }
 
-.leaflet-popup-tip {
-  background: var(--glass-bg-elevated) !important;
+.cautio-dark-popup .leaflet-popup-content {
+  margin: 0 !important;
+  line-height: 1.4 !important;
+  width: 330px !important;
+  max-width: calc(100vw - 40px) !important;
+}
+
+.cautio-dark-popup .leaflet-popup-tip-container {
+  overflow: visible !important;
+}
+
+.cautio-dark-popup .leaflet-popup-tip {
+  background: rgba(10, 16, 13, 0.98) !important;
+  border: 1px solid rgba(148, 236, 142, 0.45) !important;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.8) !important;
+}
+
+.cautio-dark-popup a.leaflet-popup-close-button {
+  top: 10px !important;
+  right: 10px !important;
+  width: 26px !important;
+  height: 26px !important;
+  line-height: 24px !important;
+  color: #cbd5e1 !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 14px !important;
+  text-decoration: none !important;
+  transition: var(--transition-fast) !important;
+  z-index: 20 !important;
+}
+
+.cautio-dark-popup a.leaflet-popup-close-button:hover {
+  color: #ffffff !important;
+  background: rgba(244, 63, 94, 0.5) !important;
+  border-color: #f43f5e !important;
+}
+
+/* ==========================================================================
+   CAUTIO RADAR ALERT CARD (POPUP BODY)
+   ========================================================================== */
+
+.cautio-alert-card {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: var(--font-sans);
+  color: #f8fafc;
+}
+
+/* 1. Header Banner */
+.alert-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding-right: 32px; /* Clears close button */
+}
+
+.alert-card-header.severity-critical {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.35) 0%, rgba(153, 27, 27, 0.15) 100%);
+  border-color: rgba(244, 63, 94, 0.6);
+  box-shadow: 0 0 16px rgba(244, 63, 94, 0.2);
+}
+
+.alert-card-header.severity-high {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.3) 0%, rgba(194, 65, 12, 0.15) 100%);
+  border-color: rgba(249, 115, 22, 0.5);
+  box-shadow: 0 0 16px rgba(249, 115, 22, 0.2);
+}
+
+.alert-card-header.severity-moderate {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(180, 83, 9, 0.12) 100%);
+  border-color: rgba(245, 158, 11, 0.5);
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.15);
+}
+
+.alert-header-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alert-radar-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f43f5e;
+  box-shadow: 0 0 8px #f43f5e;
+  animation: radarBlink 1.2s infinite ease-in-out;
+}
+
+@keyframes radarBlink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.alert-header-title {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.severity-critical .alert-header-title { color: #fecdd3; }
+.severity-high .alert-header-title { color: #fed7aa; }
+.severity-moderate .alert-header-title { color: #fef08a; }
+
+.alert-speed-excess-pill {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  white-space: nowrap;
+}
+
+/* 2. Vehicle Plate Hero Section */
+.alert-plate-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.alert-field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.alert-field-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.alert-field-label i {
+  color: var(--cautio-mint);
+  font-size: 0.72rem;
+}
+
+.alert-veh-status {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+
+/* Authentic Indian License Plate UI */
+.cautio-license-plate {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border: 2px solid #0f172a;
+  border-radius: 6px;
+  height: 38px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.9);
+}
+
+.plate-ind-band {
+  background: #1e3a8a;
+  color: #ffffff;
+  width: 32px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+  border-right: 1.5px solid #0f172a;
+  user-select: none;
+}
+
+.ind-chakra {
+  color: #60a5fa;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.ind-text {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.52rem;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  line-height: 1.1;
+}
+
+.plate-number-text {
+  flex: 1;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 1.18rem;
+  letter-spacing: 2.5px;
+  color: #09090b;
+  text-transform: uppercase;
+}
+
+/* 3. Speedometer Telemetry Box */
+.alert-speed-telemetry-box {
+  background: rgba(14, 22, 18, 0.9);
+  border: 1px solid rgba(148, 236, 142, 0.25);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.speed-readout-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.speed-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.speed-large-value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.speed-large-value .speed-num {
+  font-family: var(--font-display);
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.severity-critical .speed-large-value .speed-num {
+  color: #f43f5e;
+  text-shadow: 0 0 16px rgba(244, 63, 94, 0.6);
+}
+
+.severity-high .speed-large-value .speed-num {
+  color: #f97316;
+  text-shadow: 0 0 16px rgba(249, 115, 22, 0.6);
+}
+
+.severity-moderate .speed-large-value .speed-num {
+  color: #f59e0b;
+  text-shadow: 0 0 16px rgba(245, 158, 11, 0.6);
+}
+
+.speed-large-value .speed-unit {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.speed-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.limit-value-badge {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--cautio-mint);
+  background: rgba(148, 236, 142, 0.12);
+  border: 1px solid rgba(148, 236, 142, 0.35);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+/* Speed Bar Graphic */
+.speed-mini-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.speed-mini-bar-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  position: relative;
+}
+
+.speed-mini-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.speed-mini-bar-fill.severity-critical {
+  background: linear-gradient(90deg, #f59e0b 0%, #ef4444 60%, #dc2626 100%);
+  box-shadow: 0 0 8px rgba(220, 38, 38, 0.7);
+}
+
+.speed-mini-bar-fill.severity-high {
+  background: linear-gradient(90deg, #f59e0b 0%, #ef4444 100%);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+}
+
+.speed-mini-bar-fill.severity-moderate {
+  background: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+}
+
+.speed-mini-bar-limit-marker {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--cautio-mint);
+  box-shadow: 0 0 6px var(--cautio-mint);
+}
+
+.speed-mini-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+.limit-label-text {
+  color: var(--cautio-mint);
+  font-weight: 600;
+}
+
+/* 4. Labeled Details Grid */
+.alert-fields-grid {
+  background: rgba(8, 14, 11, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.alert-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  padding: 3px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+}
+
+.alert-info-row:last-child {
+  border-bottom: none;
+}
+
+.field-title {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.field-title i {
+  color: var(--cautio-mint);
+  font-size: 0.7rem;
+  width: 13px;
+  text-align: center;
+}
+
+.field-data {
+  font-weight: 600;
+  color: #f8fafc;
+  text-align: right;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.highlight-text {
+  color: var(--cautio-mint);
+}
+
+.alert-tag-highlight {
+  color: #fca5a5;
+  background: rgba(220, 38, 38, 0.25);
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.68rem;
+}
+
+/* 5. Action Buttons */
+.alert-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.alert-action-btn {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: var(--transition-fast);
+}
+
+.copy-btn {
+  background: rgba(148, 236, 142, 0.14);
+  border: 1px solid rgba(148, 236, 142, 0.4);
+  color: var(--cautio-mint);
+}
+
+.copy-btn:hover {
+  background: rgba(148, 236, 142, 0.25);
+  border-color: var(--cautio-mint);
+  box-shadow: 0 0 12px rgba(148, 236, 142, 0.3);
+}
+
+.zoom-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e2e8f0;
+}
+
+.zoom-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 /* ==========================================================================
@@ -1348,6 +1811,183 @@ body.hud-zen-mode .glass-bubble-cluster:hover {
   border-radius: 9999px;
 }
 
+/* Card style Violations Feed entry */
+.card-log-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(10, 16, 13, 0.9);
+  border: 1px solid rgba(148, 236, 142, 0.22);
+  border-left: 4px solid var(--hud-rose);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.card-log-entry.severity-critical {
+  border-left-color: #f43f5e;
+}
+.card-log-entry.severity-high {
+  border-left-color: #f97316;
+}
+.card-log-entry.severity-moderate {
+  border-left-color: #f59e0b;
+}
+
+.card-log-entry:hover {
+  background: rgba(18, 28, 22, 0.98);
+  border-color: var(--cautio-mint);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7), 0 0 16px rgba(148, 236, 142, 0.2);
+}
+
+.log-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.log-entry-plate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lbl-tag {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.plate-pill {
+  background: #0f172a;
+  color: #ffffff;
+  border: 1.5px solid rgba(148, 236, 142, 0.6);
+  border-radius: 5px;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 1px;
+}
+
+.log-entry-speed-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.log-entry-speed-badge.severity-critical {
+  background: rgba(244, 63, 94, 0.2);
+  border: 1px solid rgba(244, 63, 94, 0.5);
+  color: #fecdd3;
+}
+
+.log-entry-speed-badge.severity-high {
+  background: rgba(249, 115, 22, 0.2);
+  border: 1px solid rgba(249, 115, 22, 0.5);
+  color: #fed7aa;
+}
+
+.log-entry-speed-badge.severity-moderate {
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  color: #fef08a;
+}
+
+.delta-tag {
+  font-size: 0.65rem;
+  opacity: 0.85;
+}
+
+.log-entry-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+  font-size: 0.7rem;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.log-grid-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.log-lbl {
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.log-lbl i {
+  color: var(--cautio-mint);
+  font-size: 0.68rem;
+}
+
+.log-val {
+  color: #e2e8f0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-entry-footer {
+  margin-top: 2px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.click-hint {
+  font-size: 0.64rem;
+  color: var(--cautio-mint);
+  opacity: 0.9;
+  font-weight: 500;
+}
+
+.speeder-veh-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.speeder-veh-plate {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  letter-spacing: 0.5px;
+}
+
+.lbl-dim {
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+.lbl-dim-sm {
+  font-size: 0.62rem;
+  opacity: 0.8;
+  margin-right: 2px;
+}
+
+/* Backward-compatible fallback .log-entry */
 .log-entry {
   display: flex;
   justify-content: space-between;

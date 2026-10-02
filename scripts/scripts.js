@@ -11,9 +11,31 @@ const state = {
   selectedOrg: 'ALL',
   map: null,
   markerCluster: null,
+  markers: [],
   logoOverlay: null,
   fastestRecord: null
 };
+
+// Interactive Helper: Focus Marker and Open Alert Details Popup
+function focusAndOpenMarker(item) {
+  if (!item || !state.map) return;
+  const target = (state.markers || []).find(m => {
+    return m._record && m._record.vehicle === item.vehicle && Math.abs(m._record.lat - item.lat) < 0.0001;
+  }) || (state.markers || []).find(m => m._record && m._record.vehicle === item.vehicle);
+
+  if (target) {
+    if (state.markerCluster && typeof state.markerCluster.zoomToShowLayer === 'function') {
+      state.markerCluster.zoomToShowLayer(target, () => {
+        target.openPopup();
+      });
+    } else {
+      state.map.flyTo([item.lat, item.lon], 14, { animate: true, duration: 0.8 });
+      setTimeout(() => target.openPopup(), 850);
+    }
+  } else {
+    state.map.flyTo([item.lat, item.lon], 14, { animate: true, duration: 0.8 });
+  }
+}
 
 // DOM References - Top Executive Insights Island
 const activeFleetCountEl = document.getElementById('activeFleetCount');
@@ -248,33 +270,154 @@ function renderRadarMap() {
       fillOpacity: 0.88
     });
 
+    const overspeedDelta = (item.speed - threshold).toFixed(1);
+    const speedPercent = Math.min(100, Math.max(10, ((item.speed - 60) / (140 - 60)) * 100));
+    const limitPercent = Math.min(100, Math.max(10, ((threshold - 60) / (140 - 60)) * 100));
+    const severityTitle = isExtreme ? 'CRITICAL VIOLATION' : (isHigh ? 'HIGH VIOLATION' : 'MODERATE VIOLATION');
+    const severityClass = isExtreme ? 'severity-critical' : (isHigh ? 'severity-high' : 'severity-moderate');
+
     const popupHtml = `
-      <div class="cautio-map-popup">
-        <div class="cautio-popup-header">
-          <span class="cautio-popup-badge ${isExtreme ? 'badge-severe' : 'badge-danger'}">
-            ${isExtreme ? 'CRITICAL VIOLATION' : 'RADAR OVERSPEED'}
-          </span>
-          <span class="cautio-popup-time">${item.time}</span>
+      <div class="cautio-alert-card">
+        <!-- 1. Header Banner -->
+        <div class="alert-card-header ${severityClass}">
+          <div class="alert-header-badge">
+            <span class="alert-radar-pulse"></span>
+            <span class="alert-header-title"><i class="fa-solid fa-triangle-exclamation"></i> ${severityTitle}</span>
+          </div>
+          <span class="alert-speed-excess-pill">+${overspeedDelta} km/h EXCESS</span>
         </div>
-        <div class="cautio-popup-body">
-          <div class="popup-vehicle-title">${item.vehicle}</div>
-          <div class="popup-vehicle-org">${item.org}</div>
-          <div class="popup-speed-meter text-danger">
-            <span class="popup-speed-num">${item.speed.toFixed(1)}</span>
-            <span class="popup-speed-unit">KM/H</span>
+
+        <!-- 2. Vehicle Plate Hero -->
+        <div class="alert-plate-container">
+          <div class="alert-field-header">
+            <span class="alert-field-label"><i class="fa-solid fa-id-card"></i> Vehicle No:</span>
+            <span class="alert-veh-status">VIOLATION ACTIVE</span>
           </div>
-          <div class="popup-sub-info">
-            <span>Threshold: >${threshold.toFixed(0)} km/h</span>
-            <span>Coords: ${item.lat.toFixed(4)}, ${item.lon.toFixed(4)}</span>
+          <div class="cautio-license-plate">
+            <div class="plate-ind-band">
+              <span class="ind-chakra">⚙</span>
+              <span class="ind-text">IND</span>
+            </div>
+            <div class="plate-number-text">${item.vehicle}</div>
           </div>
+        </div>
+
+        <!-- 3. Speedometer Telemetry Gauge Box -->
+        <div class="alert-speed-telemetry-box ${severityClass}">
+          <div class="speed-readout-row">
+            <div class="speed-left">
+              <span class="alert-field-label"><i class="fa-solid fa-gauge-high"></i> Recorded Speed:</span>
+              <div class="speed-large-value">
+                <span class="speed-num">${item.speed.toFixed(1)}</span>
+                <span class="speed-unit">KM/H</span>
+              </div>
+            </div>
+            <div class="speed-right">
+              <span class="alert-field-label"><i class="fa-solid fa-shield-halved"></i> Statutory Limit:</span>
+              <div class="limit-value-badge">${threshold.toFixed(0)} KM/H</div>
+            </div>
+          </div>
+
+          <!-- Speed Meter Bar Graphic -->
+          <div class="speed-mini-bar-wrap">
+            <div class="speed-mini-bar-track">
+              <div class="speed-mini-bar-fill ${severityClass}" style="width: ${speedPercent}%;"></div>
+              <div class="speed-mini-bar-limit-marker" style="left: ${limitPercent}%;" title="Limit: ${threshold.toFixed(0)} km/h"></div>
+            </div>
+            <div class="speed-mini-bar-labels">
+              <span>60 km/h</span>
+              <span class="limit-label-text">Limit: ${threshold.toFixed(0)} km/h</span>
+              <span>140+ km/h</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Labeled Details Grid for Everything -->
+        <div class="alert-fields-grid">
+          <div class="alert-info-row">
+            <span class="field-title"><i class="fa-solid fa-building-shield"></i> Fleet Operator:</span>
+            <span class="field-data highlight-text">${item.org}</span>
+          </div>
+          <div class="alert-info-row">
+            <span class="field-title"><i class="fa-solid fa-bell"></i> Alert Type:</span>
+            <span class="field-data alert-tag-highlight">${item.alert || 'Overspeeding'}</span>
+          </div>
+          <div class="alert-info-row">
+            <span class="field-title"><i class="fa-solid fa-calendar-day"></i> Alert Date:</span>
+            <span class="field-data">${item.date}</span>
+          </div>
+          <div class="alert-info-row">
+            <span class="field-title"><i class="fa-solid fa-clock"></i> Alert Time:</span>
+            <span class="field-data font-mono">${item.time}</span>
+          </div>
+          <div class="alert-info-row coords-row">
+            <span class="field-title"><i class="fa-solid fa-location-dot"></i> GPS Coords:</span>
+            <span class="field-data font-mono">${item.lat.toFixed(5)}° N, ${item.lon.toFixed(5)}° E</span>
+          </div>
+        </div>
+
+        <!-- 5. Card Actions -->
+        <div class="alert-card-actions">
+          <button class="alert-action-btn copy-btn" title="Copy full alert details to clipboard">
+            <i class="fa-solid fa-copy"></i> Copy Details
+          </button>
+          <button class="alert-action-btn zoom-btn" title="Zoom in to street level">
+            <i class="fa-solid fa-magnifying-glass-plus"></i> Street Zoom
+          </button>
         </div>
       </div>
     `;
 
-    marker.bindPopup(popupHtml, { className: 'cautio-dark-popup' });
+    marker.bindPopup(popupHtml, { className: 'cautio-dark-popup', maxWidth: 360, minWidth: 320 });
+    marker._record = item;
+
+    marker.on('popupopen', (e) => {
+      const popupEl = e.popup.getElement();
+      if (!popupEl) return;
+      const copyBtn = popupEl.querySelector('.copy-btn');
+      if (copyBtn) {
+        copyBtn.onclick = () => {
+          const summary = `Vehicle No: ${item.vehicle}\nFleet Operator: ${item.org}\nAlert Type: ${item.alert || 'Overspeeding'}\nRecorded Speed: ${item.speed.toFixed(1)} km/h\nStatutory Limit: ${threshold.toFixed(0)} km/h (Excess: +${overspeedDelta} km/h)\nAlert Time: ${item.time}\nAlert Date: ${item.date}\nGPS Coords: ${item.lat.toFixed(5)}, ${item.lon.toFixed(5)}`;
+          const doCopy = () => {
+            copyBtn.innerHTML = '<i class="fa-solid fa-check text-mint"></i> Copied!';
+            setTimeout(() => {
+              copyBtn.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Details';
+            }, 2200);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(summary).then(doCopy).catch(() => {
+              const ta = document.createElement('textarea');
+              ta.value = summary;
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+              doCopy();
+            });
+          } else {
+            const ta = document.createElement('textarea');
+            ta.value = summary;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            doCopy();
+          }
+        };
+      }
+
+      const zoomBtn = popupEl.querySelector('.zoom-btn');
+      if (zoomBtn) {
+        zoomBtn.onclick = () => {
+          state.map.flyTo([item.lat, item.lon], 15, { animate: true, duration: 0.8 });
+        };
+      }
+    });
+
     markers.push(marker);
   });
 
+  state.markers = markers;
   state.fastestRecord = fastestItem;
 
   if (typeof state.markerCluster.addLayers === 'function') {
@@ -326,7 +469,7 @@ function renderRadarMap() {
   if (drawerInfractionThreshold) drawerInfractionThreshold.textContent = `Threshold > ${threshold.toFixed(0)} km/h`;
   if (drawerMeanSpeed) drawerMeanSpeed.textContent = `${meanSpeed} km/h`;
   if (drawerPeakSpeed) drawerPeakSpeed.textContent = `${peakSpeed.toFixed(1)} km/h`;
-  if (drawerFastestVehicle) drawerFastestVehicle.textContent = fastestItem ? `${fastestItem.vehicle} (${fastestItem.org})` : '--';
+  if (drawerFastestVehicle) drawerFastestVehicle.textContent = fastestItem ? `Vehicle No: ${fastestItem.vehicle} (${fastestItem.org})` : '--';
 
   // 3. SPEED SPECTRUM BAR DISTRIBUTION (Only speeds > 90)
   const specModerate = infractions.filter(r => r.speed > 90 && r.speed <= 100).length;
@@ -355,7 +498,7 @@ function renderRadarMap() {
     }
   }
 
-  // 4. TOP SPEEDERS SPOTLIGHT IN DRAWER
+  // 4. TOP SPEEDERS SPOTLIGHT IN DRAWER (Clear labels: Vehicle No, Fleet, Speed)
   if (topSpeedersList) {
     const top4 = [...infractions].sort((a, b) => b.speed - a.speed).slice(0, 4);
     if (top4.length === 0) {
@@ -364,14 +507,20 @@ function renderRadarMap() {
       topSpeedersList.innerHTML = top4.map((item, idx) => {
         const isExt = item.speed > 110;
         return `
-          <div class="speeder-row" data-lat="${item.lat}" data-lon="${item.lon}" title="Click to zoom vehicle on map">
+          <div class="speeder-row" data-veh="${item.vehicle}" data-lat="${item.lat}" data-lon="${item.lon}" title="Click to view alert for Vehicle No: ${item.vehicle}">
             <div class="speeder-left">
-              <span class="speeder-veh">#${idx+1} ${item.vehicle}</span>
-              <span class="speeder-sub">${item.org} &bull; ${item.time}</span>
+              <div class="speeder-veh-row">
+                <span class="speeder-rank">#${idx+1}</span>
+                <span class="lbl-dim">Vehicle No:</span>
+                <span class="speeder-veh-plate">${item.vehicle}</span>
+              </div>
+              <div class="speeder-sub">
+                <span class="lbl-dim">Fleet:</span> ${item.org} &bull; <span class="lbl-dim">Time:</span> ${item.time}
+              </div>
             </div>
             <div class="speeder-right">
               <span class="speeder-badge ${isExt ? 'danger' : 'warning'}">
-                ${item.speed.toFixed(1)} km/h
+                <span class="lbl-dim-sm">Speed:</span> ${item.speed.toFixed(1)} km/h
               </span>
               <i class="fa-solid fa-location-crosshairs speeder-zoom-icon"></i>
             </div>
@@ -383,9 +532,13 @@ function renderRadarMap() {
         row.addEventListener('click', () => {
           const lat = parseFloat(row.dataset.lat);
           const lon = parseFloat(row.dataset.lon);
-          if (!isNaN(lat) && !isNaN(lon) && state.map) {
-            state.map.flyTo([lat, lon], 13, { animate: true, duration: 1.2 });
-            closeTopInsightsDrawer();
+          const veh = row.dataset.veh;
+          closeTopInsightsDrawer();
+          const targetItem = infractions.find(r => r.vehicle === veh && Math.abs(r.lat - lat) < 0.001) || infractions.find(r => r.vehicle === veh);
+          if (targetItem) {
+            focusAndOpenMarker(targetItem);
+          } else if (!isNaN(lat) && !isNaN(lon) && state.map) {
+            state.map.flyTo([lat, lon], 14, { animate: true, duration: 1.0 });
           }
         });
       });
@@ -418,7 +571,17 @@ function renderRadarMap() {
   if (cardViolatingUnits) cardViolatingUnits.textContent = totalCount;
   if (cardMeanSpeed) cardMeanSpeed.textContent = `${meanSpeed} km/h`;
   if (cardPeakSpeed) cardPeakSpeed.textContent = `${peakSpeed.toFixed(1)} km/h`;
-  if (fastestUnitLabel) fastestUnitLabel.textContent = fastestItem ? `${fastestItem.vehicle} (${peakSpeed.toFixed(1)} km/h)` : '--';
+  if (fastestUnitLabel) {
+    fastestUnitLabel.textContent = fastestItem ? `Vehicle No: ${fastestItem.vehicle} (${peakSpeed.toFixed(1)} km/h)` : '--';
+    fastestUnitLabel.style.cursor = fastestItem ? 'pointer' : 'default';
+    fastestUnitLabel.onclick = () => {
+      if (fastestItem) {
+        const tModal = document.getElementById('telemetryModal');
+        if (tModal) tModal.classList.remove('active');
+        focusAndOpenMarker(fastestItem);
+      }
+    };
+  }
 
   const navViolationsCount = document.getElementById('navViolationsCount');
   if (navViolationsCount) navViolationsCount.textContent = totalCount;
@@ -446,7 +609,7 @@ function renderViolationsFeed(infractions) {
   if (infractions.length === 0) {
     violationsList.innerHTML = `
       <div class="empty-state">
-        <i class="fa-solid fa-circle-check" style="font-size:2rem; color:var(--accent-mint); margin-bottom:10px;"></i>
+        <i class="fa-solid fa-circle-check" style="font-size:2rem; color:var(--cautio-mint); margin-bottom:10px;"></i>
         <p>No statutory infractions logged above ${state.statutoryThreshold} km/h.</p>
       </div>
     `;
@@ -456,30 +619,71 @@ function renderViolationsFeed(infractions) {
   let html = '';
   infractions.sort((a, b) => b.speed - a.speed).forEach(item => {
     const isExtreme = item.speed > 110;
+    const isHigh = item.speed > 100;
+    const severityClass = isExtreme ? 'severity-critical' : (isHigh ? 'severity-high' : 'severity-moderate');
+    const overspeedDelta = (item.speed - state.statutoryThreshold).toFixed(1);
+
     html += `
-      <div class="log-entry" data-lat="${item.lat}" data-lon="${item.lon}" title="Click to zoom on map">
-        <div class="log-entry-info">
-          <span class="log-entry-type">${item.vehicle} (${item.org})</span>
-          <span class="log-entry-time">${item.date} ${item.time} | Lat: ${item.lat.toFixed(2)}, Lon: ${item.lon.toFixed(2)}</span>
+      <div class="card-log-entry ${severityClass}" data-veh="${item.vehicle}" data-lat="${item.lat}" data-lon="${item.lon}" title="Click to view alert for Vehicle No: ${item.vehicle}">
+        <div class="log-entry-header">
+          <div class="log-entry-plate">
+            <span class="lbl-tag">Vehicle No:</span>
+            <span class="plate-pill">${item.vehicle}</span>
+          </div>
+          <div class="log-entry-speed-badge ${severityClass}">
+            <i class="fa-solid fa-gauge-high"></i>
+            <span class="lbl-tag">Speed:</span>
+            <strong>${item.speed.toFixed(1)} km/h</strong>
+            <span class="delta-tag">(+${overspeedDelta})</span>
+          </div>
         </div>
-        <span class="log-entry-tag" style="${isExtreme ? 'background:rgba(220,38,38,0.35); color:#fff; border-color:#ef4444;' : ''}">
-          ${item.speed.toFixed(1)} km/h
-        </span>
+
+        <div class="log-entry-grid">
+          <div class="log-grid-item">
+            <span class="log-lbl"><i class="fa-solid fa-building-shield"></i> Fleet Operator:</span>
+            <span class="log-val">${item.org}</span>
+          </div>
+          <div class="log-grid-item">
+            <span class="log-lbl"><i class="fa-solid fa-bell"></i> Alert Type:</span>
+            <span class="log-val text-rose">${item.alert || 'Overspeeding'}</span>
+          </div>
+          <div class="log-grid-item">
+            <span class="log-lbl"><i class="fa-solid fa-clock"></i> Alert Time:</span>
+            <span class="log-val font-mono">${item.time}</span>
+          </div>
+          <div class="log-grid-item">
+            <span class="log-lbl"><i class="fa-solid fa-calendar-day"></i> Alert Date:</span>
+            <span class="log-val font-mono">${item.date}</span>
+          </div>
+          <div class="log-grid-item" style="grid-column: span 2;">
+            <span class="log-lbl"><i class="fa-solid fa-location-dot"></i> GPS Coords:</span>
+            <span class="log-val font-mono">${item.lat.toFixed(5)}° N, ${item.lon.toFixed(5)}° E</span>
+          </div>
+        </div>
+
+        <div class="log-entry-footer">
+          <span class="click-hint"><i class="fa-solid fa-location-crosshairs text-mint"></i> Click to inspect Vehicle No: ${item.vehicle} on map &rarr;</span>
+        </div>
       </div>
     `;
   });
 
   violationsList.innerHTML = html;
 
-  violationsList.querySelectorAll('.log-entry').forEach(row => {
+  violationsList.querySelectorAll('.card-log-entry').forEach(row => {
     row.addEventListener('click', () => {
       const lat = parseFloat(row.dataset.lat);
       const lon = parseFloat(row.dataset.lon);
-      if (!isNaN(lat) && !isNaN(lon) && state.map) {
-        state.map.flyTo([lat, lon], 12, { animate: true, duration: 1.2 });
-      }
+      const veh = row.dataset.veh;
       const vModal = document.getElementById('violationsModal');
       if (vModal) vModal.classList.remove('active');
+
+      const targetItem = infractions.find(r => r.vehicle === veh && Math.abs(r.lat - lat) < 0.001) || infractions.find(r => r.vehicle === veh);
+      if (targetItem) {
+        focusAndOpenMarker(targetItem);
+      } else if (!isNaN(lat) && !isNaN(lon) && state.map) {
+        state.map.flyTo([lat, lon], 14, { animate: true, duration: 1.0 });
+      }
     });
   });
 }
@@ -557,11 +761,11 @@ if (btnCloseTopInsights) {
   btnCloseTopInsights.addEventListener('click', closeTopInsightsDrawer);
 }
 
-// Click Top Offender chip in bar -> Fly directly to vehicle on map
+// Click Top Offender chip in bar -> Fly directly to vehicle on map and open alert popup
 if (chipTopOffender) {
   chipTopOffender.addEventListener('click', () => {
-    if (state.fastestRecord && state.map) {
-      state.map.flyTo([state.fastestRecord.lat, state.fastestRecord.lon], 13, { animate: true, duration: 1.2 });
+    if (state.fastestRecord) {
+      focusAndOpenMarker(state.fastestRecord);
     }
   });
 }
