@@ -700,6 +700,7 @@ function renderRadarMap() {
   }
 
   renderViolationsFeed(infractions);
+  renderInsightsCharts(infractions);
 }
 
 function renderViolationsFeed(infractions) {
@@ -797,6 +798,429 @@ function renderViolationsFeed(infractions) {
 }
 
 /* ==========================================================================
+   ADVANCED TELEMETRY CHARTS & PLOTS ENGINE (CHART.JS)
+   ========================================================================== */
+const chartInstances = {
+  histogram: null,
+  donut: null,
+  timeline: null,
+  operator: null,
+  modalCurve: null
+};
+
+function safeDestroyChart(chartKey) {
+  if (chartInstances[chartKey]) {
+    try {
+      chartInstances[chartKey].destroy();
+    } catch (e) {
+      console.warn('Chart destruction error:', chartKey, e);
+    }
+    chartInstances[chartKey] = null;
+  }
+}
+
+function configureChartDefaults() {
+  if (typeof window.Chart === 'undefined') return;
+  const Chart = window.Chart;
+  Chart.defaults.color = '#94a3b8';
+  Chart.defaults.font.family = "'JetBrains Mono', -apple-system, BlinkMacSystemFont, monospace";
+  Chart.defaults.font.size = 11;
+  Chart.defaults.responsive = true;
+  Chart.defaults.maintainAspectRatio = false;
+  if (Chart.defaults.plugins && Chart.defaults.plugins.tooltip) {
+    Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(10, 18, 14, 0.96)';
+    Chart.defaults.plugins.tooltip.borderColor = 'rgba(148, 236, 142, 0.35)';
+    Chart.defaults.plugins.tooltip.borderWidth = 1;
+    Chart.defaults.plugins.tooltip.titleColor = '#ffffff';
+    Chart.defaults.plugins.tooltip.bodyColor = '#e2e8f0';
+    Chart.defaults.plugins.tooltip.padding = 10;
+    Chart.defaults.plugins.tooltip.cornerRadius = 8;
+  }
+}
+
+// 1. Velocity Infraction Frequency Spectrum (Histogram)
+function renderHistogramChart(infractions) {
+  const canvas = document.getElementById('chartSpeedHistogram');
+  if (!canvas || typeof window.Chart === 'undefined') return;
+
+  safeDestroyChart('histogram');
+
+  const bins = [
+    { label: '90-95', min: 90, max: 95, color: 'rgba(245, 158, 11, 0.85)', border: '#f59e0b' },
+    { label: '95-100', min: 95, max: 100, color: 'rgba(249, 115, 22, 0.85)', border: '#f97316' },
+    { label: '100-105', min: 100, max: 105, color: 'rgba(239, 68, 68, 0.85)', border: '#ef4444' },
+    { label: '105-110', min: 105, max: 110, color: 'rgba(220, 38, 38, 0.85)', border: '#dc2626' },
+    { label: '110-115', min: 110, max: 115, color: 'rgba(225, 29, 72, 0.85)', border: '#e11d48' },
+    { label: '115-120', min: 115, max: 120, color: 'rgba(190, 18, 60, 0.85)', border: '#be123c' },
+    { label: '>120', min: 120, max: Infinity, color: 'rgba(159, 18, 57, 0.95)', border: '#f43f5e' }
+  ];
+
+  const counts = bins.map(b => infractions.filter(r => r.speed > b.min && r.speed <= b.max).length);
+
+  chartInstances.histogram = new window.Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: bins.map(b => `${b.label} km/h`),
+      datasets: [{
+        label: 'Violations Count',
+        data: counts,
+        backgroundColor: bins.map(b => b.color),
+        borderColor: bins.map(b => b.border),
+        borderWidth: 1.5,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 350 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => `Speed Band: ${items[0].label}`,
+            label: (item) => `Violations: ${item.formattedValue} units`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#94a3b8', font: { size: 10 } }
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#94a3b8', precision: 0 }
+        }
+      }
+    }
+  });
+}
+
+// 2. Infraction Severity Breakdown (Donut)
+function renderSeverityDonutChart(infractions) {
+  const canvas = document.getElementById('chartSeverityDonut');
+  if (!canvas || typeof window.Chart === 'undefined') return;
+
+  safeDestroyChart('donut');
+
+  const modCount = infractions.filter(r => r.speed > 90 && r.speed <= 100).length;
+  const highCount = infractions.filter(r => r.speed > 100 && r.speed <= 110).length;
+  const critCount = infractions.filter(r => r.speed > 110).length;
+  const total = infractions.length;
+
+  const tag = document.getElementById('severityRatioTag');
+  if (tag) {
+    tag.textContent = total > 0 ? `${critCount} Critical / ${total} Total` : '0 Violations';
+  }
+
+  chartInstances.donut = new window.Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: ['Moderate (90-100)', 'High (100-110)', 'Severe (>110)'],
+      datasets: [{
+        data: total > 0 ? [modCount, highCount, critCount] : [0, 0, 0],
+        backgroundColor: [
+          'rgba(245, 158, 11, 0.85)',
+          'rgba(239, 68, 68, 0.85)',
+          'rgba(225, 29, 72, 0.95)'
+        ],
+        borderColor: ['#f59e0b', '#ef4444', '#f43f5e'],
+        borderWidth: 2,
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '68%',
+      animation: { duration: 350 },
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            boxWidth: 10,
+            padding: 12,
+            font: { size: 10 },
+            color: '#cbd5e1'
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: (item) => {
+              const count = item.raw;
+              const pct = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+              return ` ${count} violations (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// 3. Temporal Infraction Timeline (Velocity Dynamics)
+function renderTimelineChart(infractions) {
+  const canvas = document.getElementById('chartTemporalTimeline');
+  if (!canvas || typeof window.Chart === 'undefined') return;
+
+  safeDestroyChart('timeline');
+
+  // Sort chronological by time
+  const sorted = [...infractions].sort((a, b) => {
+    return (a.time || '').localeCompare(b.time || '');
+  });
+
+  const points = sorted.length > 40
+    ? sorted.filter((_, idx) => idx % Math.ceil(sorted.length / 40) === 0)
+    : sorted;
+
+  chartInstances.timeline = new window.Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: points.map(p => p.time || p.vehicle),
+      datasets: [
+        {
+          label: 'Vehicle Speed (km/h)',
+          data: points.map(p => p.speed),
+          borderColor: '#94ec8e',
+          backgroundColor: 'rgba(148, 236, 142, 0.08)',
+          borderWidth: 2,
+          tension: 0.3,
+          pointRadius: 3,
+          pointHoverRadius: 6,
+          pointBackgroundColor: points.map(p => p.speed > 110 ? '#ef4444' : (p.speed > 100 ? '#f59e0b' : '#94ec8e')),
+          fill: true
+        },
+        {
+          label: 'Threshold (90 km/h)',
+          data: points.map(() => 90),
+          borderColor: 'rgba(239, 68, 68, 0.6)',
+          borderWidth: 1.5,
+          borderDash: [5, 5],
+          pointRadius: 0,
+          fill: false
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 350 },
+      interaction: {
+        mode: 'index',
+        intersect: false
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          align: 'end',
+          labels: { boxWidth: 10, font: { size: 10 }, color: '#cbd5e1' }
+        },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const idx = items[0].dataIndex;
+              const p = points[idx];
+              return p ? `Time: ${p.time} | Vehicle No: ${p.vehicle}` : '';
+            },
+            label: (item) => {
+              if (item.datasetIndex === 0) {
+                const p = points[item.dataIndex];
+                return `Speed: ${item.formattedValue} km/h (${p ? p.org : ''})`;
+              }
+              return `Limit: ${item.formattedValue} km/h`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: {
+            color: '#94a3b8',
+            font: { size: 10 },
+            maxRotation: 45,
+            autoSkip: true,
+            maxTicksLimit: 8
+          }
+        },
+        y: {
+          min: 80,
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: {
+            color: '#94a3b8',
+            callback: (v) => `${v} km/h`
+          }
+        }
+      }
+    }
+  });
+}
+
+// 4. Operator Risk Benchmark (Horizontal Bar)
+function renderOperatorRiskChart(infractions) {
+  const canvas = document.getElementById('chartOperatorRisk');
+  if (!canvas || typeof window.Chart === 'undefined') return;
+
+  safeDestroyChart('operator');
+
+  const orgStats = {};
+  infractions.forEach(item => {
+    if (!orgStats[item.org]) {
+      orgStats[item.org] = { violations: 0, maxSpeed: 0 };
+    }
+    orgStats[item.org].violations++;
+    if (item.speed > orgStats[item.org].maxSpeed) orgStats[item.org].maxSpeed = item.speed;
+  });
+
+  const sortedOrgs = Object.entries(orgStats)
+    .sort((a, b) => b[1].violations - a[1].violations)
+    .slice(0, 6);
+
+  chartInstances.operator = new window.Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: sortedOrgs.map(o => o[0].length > 18 ? o[0].slice(0, 16) + '..' : o[0]),
+      datasets: [{
+        label: 'Overspeed Violations',
+        data: sortedOrgs.map(o => o[1].violations),
+        backgroundColor: 'rgba(148, 236, 142, 0.8)',
+        borderColor: '#94ec8e',
+        borderWidth: 1.5,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 350 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const org = sortedOrgs[items[0].dataIndex];
+              return org ? org[0] : '';
+            },
+            label: (item) => {
+              const org = sortedOrgs[item.dataIndex];
+              return ` ${item.formattedValue} Violations | Peak: ${org ? org[1].maxSpeed.toFixed(1) : 0} km/h`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#94a3b8', precision: 0 }
+        },
+        y: {
+          grid: { display: false },
+          ticks: { color: '#cbd5e1', font: { size: 10 } }
+        }
+      }
+    }
+  });
+}
+
+// 5. Telemetry Modal Speed Curve (Real-time Velocity Dynamics Curve)
+function renderModalSpeedCurveChart(infractions) {
+  const canvas = document.getElementById('chartModalSpeedCurve');
+  if (!canvas || typeof window.Chart === 'undefined') return;
+
+  safeDestroyChart('modalCurve');
+
+  const sortedSpeeds = [...infractions].map(r => r.speed).sort((a, b) => b - a);
+  const sampled = sortedSpeeds.length > 50
+    ? sortedSpeeds.filter((_, idx) => idx % Math.ceil(sortedSpeeds.length / 50) === 0)
+    : sortedSpeeds;
+
+  chartInstances.modalCurve = new window.Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: sampled.map((_, i) => `#${i + 1}`),
+      datasets: [
+        {
+          label: 'Ranked Speed Curve',
+          data: sampled,
+          borderColor: '#94ec8e',
+          backgroundColor: 'rgba(148, 236, 142, 0.12)',
+          borderWidth: 2,
+          tension: 0.35,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          fill: true
+        },
+        {
+          label: 'Statutory Limit (90 km/h)',
+          data: sampled.map(() => 90),
+          borderColor: 'rgba(239, 68, 68, 0.7)',
+          borderWidth: 1.5,
+          borderDash: [4, 4],
+          pointRadius: 0,
+          fill: false
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 350 },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          align: 'end',
+          labels: { boxWidth: 10, font: { size: 10 }, color: '#cbd5e1' }
+        },
+        tooltip: {
+          callbacks: {
+            title: (items) => `Speed Rank: ${items[0].label}`,
+            label: (item) => `Speed: ${item.formattedValue} km/h`
+          }
+        }
+      },
+      scales: {
+        x: {
+          display: false
+        },
+        y: {
+          min: 80,
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => `${v} km/h` }
+        }
+      }
+    }
+  });
+}
+
+// Master coordinator for all analytics plots
+function renderInsightsCharts(infractions) {
+  configureChartDefaults();
+  renderHistogramChart(infractions);
+  renderSeverityDonutChart(infractions);
+  renderTimelineChart(infractions);
+  renderOperatorRiskChart(infractions);
+  renderModalSpeedCurveChart(infractions);
+}
+
+// Auto-resizer for drawer and modal transitions
+function resizeAllCharts() {
+  setTimeout(() => {
+    Object.values(chartInstances).forEach(chart => {
+      if (chart && typeof chart.resize === 'function') {
+        chart.resize();
+      }
+    });
+  }, 80);
+}
+
+/* ==========================================================================
    DEFAULT ZINGBUS DATASET
    ========================================================================== */
 function loadDefaultZingbusData() {
@@ -854,6 +1278,9 @@ function toggleTopInsightsDrawer() {
   if (!topInsightsDrawer) return;
   const isActive = topInsightsDrawer.classList.toggle('active');
   if (btnToggleTopInsights) btnToggleTopInsights.classList.toggle('active', isActive);
+  if (isActive) {
+    resizeAllCharts();
+  }
 }
 
 function closeTopInsightsDrawer() {
@@ -1099,6 +1526,9 @@ const violationsModal = document.getElementById('violationsModal');
 
 function openModal(modal) {
   if (modal) modal.classList.add('active');
+  if (modal === telemetryModal) {
+    resizeAllCharts();
+  }
 }
 
 function closeModal(modal) {
@@ -1176,9 +1606,15 @@ if (document.readyState === 'loading') {
 window.addEventListener('load', () => {
   if (!state.map) bootApplication();
   else state.map.invalidateSize();
+  resizeAllCharts();
+});
+
+window.addEventListener('resize', () => {
+  resizeAllCharts();
 });
 
 setTimeout(() => {
   if (!state.map) bootApplication();
   else state.map.invalidateSize();
+  resizeAllCharts();
 }, 300);

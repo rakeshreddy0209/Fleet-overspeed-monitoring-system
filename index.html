@@ -26,6 +26,9 @@
   <!-- PapaParse for fast CSV parsing -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
+  <!-- Chart.js for High-Performance Fleet Visualizations -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body class="theme-cockpit theme-bubble-hud">
@@ -249,7 +252,69 @@
             </div>
           </div>
 
-          <!-- 3. Top Speeders & High-Risk Organizations Grid -->
+          <!-- 3. ADVANCED ANALYTICS PLOTS: ROW 1 (HISTOGRAM + SEVERITY DONUT) -->
+          <div class="analytics-plots-grid">
+            <!-- Plot 1: Velocity Distribution Histogram -->
+            <div class="plot-card">
+              <div class="plot-card-header">
+                <div class="plot-title">
+                  <i class="fa-solid fa-chart-column text-mint"></i>
+                  <span>VELOCITY INFRACTION FREQUENCY SPECTRUM</span>
+                </div>
+                <span class="plot-tag">Speed Bins</span>
+              </div>
+              <div class="plot-canvas-wrap">
+                <canvas id="chartSpeedHistogram"></canvas>
+              </div>
+            </div>
+
+            <!-- Plot 2: Severity Composition Donut -->
+            <div class="plot-card">
+              <div class="plot-card-header">
+                <div class="plot-title">
+                  <i class="fa-solid fa-chart-pie text-rose"></i>
+                  <span>INFRACTION SEVERITY BREAKDOWN</span>
+                </div>
+                <span class="plot-tag" id="severityRatioTag">Critical vs Moderate</span>
+              </div>
+              <div class="plot-canvas-wrap donut-wrap">
+                <canvas id="chartSeverityDonut"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. ADVANCED ANALYTICS PLOTS: ROW 2 (TIMELINE CURVE + OPERATOR BENCHMARK) -->
+          <div class="analytics-plots-grid">
+            <!-- Plot 3: Temporal Velocity Curve -->
+            <div class="plot-card">
+              <div class="plot-card-header">
+                <div class="plot-title">
+                  <i class="fa-solid fa-wave-square text-amber"></i>
+                  <span>TEMPORAL INFRACTION TIMELINE (VELOCITY DYNAMICS)</span>
+                </div>
+                <span class="plot-tag">Temporal Risk</span>
+              </div>
+              <div class="plot-canvas-wrap">
+                <canvas id="chartTemporalTimeline"></canvas>
+              </div>
+            </div>
+
+            <!-- Plot 4: Operator Risk Ranking -->
+            <div class="plot-card">
+              <div class="plot-card-header">
+                <div class="plot-title">
+                  <i class="fa-solid fa-building-shield text-mint"></i>
+                  <span>CLIENT / FLEET OPERATOR RISK BENCHMARK</span>
+                </div>
+                <span class="plot-tag">Violations by Operator</span>
+              </div>
+              <div class="plot-canvas-wrap">
+                <canvas id="chartOperatorRisk"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. Top Speeders & High-Risk Organizations Grid -->
           <div class="drawer-deep-grid">
             <!-- Top Speeding Units Spotlight -->
             <div class="drawer-deep-col">
@@ -274,7 +339,7 @@
 
     <!-- 1. Telemetry Matrix Pop-up Modal -->
     <div id="telemetryModal" class="glass-modal-backdrop" aria-hidden="true">
-      <div class="glass-modal-card">
+      <div class="glass-modal-card modal-card-wide">
         <div class="modal-header">
           <div class="modal-title">
             <span class="header-icon"><i class="fa-solid fa-satellite-dish"></i></span>
@@ -318,6 +383,17 @@
               </div>
             </div>
             <div class="gauge-footer-label" id="fastestUnitLabel">Fastest Unit: --</div>
+          </div>
+
+          <!-- Real-Time Velocity Curve Chart -->
+          <div class="telemetry-chart-section">
+            <div class="telemetry-chart-title">
+              <span><i class="fa-solid fa-chart-line text-mint"></i> FLEET VELOCITY SPECTRUM DYNAMICS</span>
+              <span class="plot-tag">Live Overspeed Curve</span>
+            </div>
+            <div class="plot-canvas-wrap" style="height: 150px;">
+              <canvas id="chartModalSpeedCurve"></canvas>
+            </div>
           </div>
         </div>
       </div>
