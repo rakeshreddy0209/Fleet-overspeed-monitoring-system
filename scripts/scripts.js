@@ -162,13 +162,17 @@ function processTelemetryData(records) {
     }
 
     const rawSpeed = parseFloat(row[speedKey]);
-    if (!isNaN(rawSpeed) && lat !== null && lon !== null && !isNaN(lat) && !isNaN(lon)) {
+    // STRICT REQUIREMENT: Only vehicles with speeds HIGHER than 90 km/h (> 90).
+    // Discard any record with speed <= 90 completely, treating it as if it's not even there!
+    if (isNaN(rawSpeed) || rawSpeed <= 90.0) return;
+
+    if (lat !== null && lon !== null && !isNaN(lat) && !isNaN(lon)) {
       state.cleansedRecords.push({
         vehicle: String(row[vehKey] || 'UNKNOWN').trim(),
         org: String(row[orgKey] || 'General Fleet').trim(),
         date: String(row[dateKey] || '2026-09-02').trim(),
         time: String(row[timeKey] || '00:00:00').trim(),
-        alert: String(row[typeKey] || (rawSpeed > 90 ? 'Overspeeding' : 'Normal')).trim(),
+        alert: String(row[typeKey] || 'Overspeeding').trim(),
         speed: rawSpeed,
         lat: lat,
         lon: lon
@@ -195,70 +199,73 @@ function renderRadarMap() {
 
   state.markerCluster.clearLayers();
 
+  // Enforce threshold is strictly >= 90.0 km/h
+  const threshold = Math.max(90.0, state.statutoryThreshold || 90.0);
+
   let filtered = state.cleansedRecords;
   if (state.selectedOrg !== 'ALL') {
     filtered = filtered.filter(r => r.org === state.selectedOrg);
   }
 
-  const threshold = state.statutoryThreshold;
+  // Filter ONLY vehicles strictly exceeding statutory threshold (> threshold, where threshold >= 90)
+  // Speeds <= 90 are treated as if they don't even exist!
+  const infractions = filtered.filter(item => item.speed > threshold);
+
   let totalSpeed = 0;
   let peakSpeed = 0;
   let fastestItem = null;
-  let infractions = [];
   const markers = [];
-
-  // Organization violation aggregator
   const orgStats = {};
 
-  filtered.forEach(item => {
+  infractions.forEach(item => {
     totalSpeed += item.speed;
     if (item.speed > peakSpeed) {
       peakSpeed = item.speed;
       fastestItem = item;
     }
 
-    const isViolation = item.speed > threshold;
-    if (isViolation) infractions.push(item);
-
     // Track org stats
     if (!orgStats[item.org]) {
       orgStats[item.org] = { total: 0, violations: 0, maxSpeed: 0 };
     }
     orgStats[item.org].total++;
-    if (isViolation) orgStats[item.org].violations++;
+    orgStats[item.org].violations++;
     if (item.speed > orgStats[item.org].maxSpeed) orgStats[item.org].maxSpeed = item.speed;
 
-    // Marker styling
-    const markerColor = isViolation ? '#ef4444' : '#10b981';
-    const radius = isViolation ? 8 : 6;
+    // Marker styling for speed > 90 ONLY:
+    // 90-100: Amber, 100-110: Red, >110: Flashing Crimson
+    const isExtreme = item.speed > 110.0;
+    const isHigh = item.speed > 100.0;
+    const markerColor = isExtreme ? '#dc2626' : (isHigh ? '#ef4444' : '#f59e0b');
+    const radius = isExtreme ? 9 : (isHigh ? 8 : 7);
 
     const marker = L.circleMarker([item.lat, item.lon], {
       radius: radius,
       fillColor: markerColor,
       color: '#ffffff',
-      weight: 1.5,
+      weight: 1.8,
       opacity: 0.95,
-      fillOpacity: 0.85
+      fillOpacity: 0.88
     });
 
     const popupHtml = `
       <div class="cautio-map-popup">
         <div class="cautio-popup-header">
-          <span class="cautio-popup-badge ${isViolation ? 'badge-danger' : 'badge-safe'}">
-            ${isViolation ? 'RADAR VIOLATION' : 'COMPLIANT'}
+          <span class="cautio-popup-badge ${isExtreme ? 'badge-severe' : 'badge-danger'}">
+            ${isExtreme ? 'CRITICAL VIOLATION' : 'RADAR OVERSPEED'}
           </span>
           <span class="cautio-popup-time">${item.time}</span>
         </div>
         <div class="cautio-popup-body">
           <div class="popup-vehicle-title">${item.vehicle}</div>
           <div class="popup-vehicle-org">${item.org}</div>
-          <div class="popup-speed-meter ${isViolation ? 'text-danger' : 'text-emerald'}">
+          <div class="popup-speed-meter text-danger">
             <span class="popup-speed-num">${item.speed.toFixed(1)}</span>
             <span class="popup-speed-unit">KM/H</span>
           </div>
           <div class="popup-sub-info">
-            <span>Lat: ${item.lat.toFixed(4)}</span>
-            <span>Lon: ${item.lon.toFixed(4)}</span>
+            <span>Threshold: >${threshold.toFixed(0)} km/h</span>
+            <span>Coords: ${item.lat.toFixed(4)}, ${item.lon.toFixed(4)}</span>
           </div>
         </div>
       </div>
@@ -281,25 +288,24 @@ function renderRadarMap() {
     state.map.fitBounds(group.getBounds().pad(0.08), { maxZoom: 14 });
   }
 
-  // Compute Metrics & Insights
-  const totalCount = filtered.length;
-  const violationCount = infractions.length;
-  const compliantCount = totalCount - violationCount;
-  const compliancePct = totalCount > 0 ? Math.round((compliantCount / totalCount) * 100) : 100;
+  // Compute Metrics & Insights (Strictly overspeed records)
+  const totalCount = infractions.length;
+  const distinctVehicles = new Set(infractions.map(i => i.vehicle)).size;
+  const severeCount = infractions.filter(r => r.speed > 110.0).length;
   const meanSpeed = totalCount > 0 ? (totalSpeed / totalCount).toFixed(1) : '0.0';
   const fastestVehPlate = fastestItem ? fastestItem.vehicle : '--';
 
   // Find Top Risk Organization
   const sortedOrgs = Object.entries(orgStats).sort((a, b) => b[1].violations - a[1].violations);
-  const topRisk = sortedOrgs.length > 0 && sortedOrgs[0][1].violations > 0 ? sortedOrgs[0][0] : 'All Compliant';
+  const topRisk = sortedOrgs.length > 0 && sortedOrgs[0][1].violations > 0 ? sortedOrgs[0][0] : 'None';
 
-  // 1. UPDATE TOP BUBBLE ISLAND (Directly on Top)
-  if (activeFleetCountEl) activeFleetCountEl.textContent = totalCount;
+  // 1. UPDATE TOP BUBBLE ISLAND
+  if (activeFleetCountEl) activeFleetCountEl.textContent = distinctVehicles;
   if (complianceRateDisplayEl) {
-    complianceRateDisplayEl.textContent = `${compliancePct}%`;
-    complianceRateDisplayEl.className = compliancePct >= 85 ? 'chip-val highlight-emerald' : (compliancePct >= 65 ? 'chip-val highlight-amber' : 'chip-val highlight-rose');
+    complianceRateDisplayEl.textContent = severeCount;
+    complianceRateDisplayEl.className = severeCount > 0 ? 'chip-val highlight-rose' : 'chip-val highlight-emerald';
   }
-  if (infractionsCountEl) infractionsCountEl.textContent = violationCount;
+  if (infractionsCountEl) infractionsCountEl.textContent = totalCount;
   if (meanSpeedDisplayEl) meanSpeedDisplayEl.textContent = `${meanSpeed} km/h`;
   if (peakSpeedDisplayEl) peakSpeedDisplayEl.textContent = `${peakSpeed.toFixed(1)} km/h`;
   if (topOffenderDisplayEl) {
@@ -313,47 +319,50 @@ function renderRadarMap() {
   }
 
   // 2. UPDATE EXPANDABLE TOP INSIGHTS DRAWER
-  if (drawerTotalUnits) drawerTotalUnits.textContent = totalCount;
-  if (drawerCompliantUnits) drawerCompliantUnits.textContent = compliantCount;
-  if (drawerCompliancePct) drawerCompliancePct.textContent = `${compliancePct}% Compliance Rate`;
-  if (drawerInfractionsUnits) drawerInfractionsUnits.textContent = violationCount;
-  if (drawerInfractionThreshold) drawerInfractionThreshold.textContent = `Threshold > ${threshold} km/h`;
+  if (drawerTotalUnits) drawerTotalUnits.textContent = distinctVehicles;
+  if (drawerCompliantUnits) drawerCompliantUnits.textContent = severeCount;
+  if (drawerCompliancePct) drawerCompliancePct.textContent = `${severeCount} Severe (>110 km/h)`;
+  if (drawerInfractionsUnits) drawerInfractionsUnits.textContent = totalCount;
+  if (drawerInfractionThreshold) drawerInfractionThreshold.textContent = `Threshold > ${threshold.toFixed(0)} km/h`;
   if (drawerMeanSpeed) drawerMeanSpeed.textContent = `${meanSpeed} km/h`;
   if (drawerPeakSpeed) drawerPeakSpeed.textContent = `${peakSpeed.toFixed(1)} km/h`;
   if (drawerFastestVehicle) drawerFastestVehicle.textContent = fastestItem ? `${fastestItem.vehicle} (${fastestItem.org})` : '--';
 
-  // 3. SPEED SPECTRUM BAR DISTRIBUTION
-  const specCompliant = filtered.filter(r => r.speed <= threshold).length;
-  const specWarning = filtered.filter(r => r.speed > threshold && r.speed <= 110).length;
-  const specCritical = filtered.filter(r => r.speed > 110).length;
+  // 3. SPEED SPECTRUM BAR DISTRIBUTION (Only speeds > 90)
+  const specModerate = infractions.filter(r => r.speed > 90 && r.speed <= 100).length;
+  const specHigh = infractions.filter(r => r.speed > 100 && r.speed <= 110).length;
+  const specCritical = infractions.filter(r => r.speed > 110).length;
 
   if (totalCount > 0) {
-    const pCompliant = (specCompliant / totalCount) * 100;
-    const pWarning = (specWarning / totalCount) * 100;
-    const pCritical = (specCritical / totalCount) * 100;
+    const pMod = (specModerate / totalCount) * 100;
+    const pHigh = (specHigh / totalCount) * 100;
+    const pCrit = (specCritical / totalCount) * 100;
 
-    if (specCompliantSeg) specCompliantSeg.style.width = `${pCompliant}%`;
-    if (specWarningSeg) specWarningSeg.style.width = `${pWarning}%`;
-    if (specCriticalSeg) specCriticalSeg.style.width = `${pCritical}%`;
+    const specWarningSeg = document.getElementById('specWarningSeg');
+    const specHighSeg = document.getElementById('specHighSeg');
+    const specCriticalSeg = document.getElementById('specCriticalSeg');
+
+    if (specWarningSeg) specWarningSeg.style.width = `${pMod}%`;
+    if (specHighSeg) specHighSeg.style.width = `${pHigh}%`;
+    if (specCriticalSeg) specCriticalSeg.style.width = `${pCrit}%`;
 
     if (spectrumStatsText) {
       spectrumStatsText.innerHTML = `
-        <strong>${specCompliant}</strong> Compliant (≤${threshold} km/h) &bull; 
-        <strong>${specWarning}</strong> Warning (${threshold+1}-110 km/h) &bull; 
-        <strong style="color:#f87171">${specCritical}</strong> Severe Infractions (>110 km/h)
+        <strong>${specModerate}</strong> Moderate (90-100 km/h) &bull; 
+        <strong>${specHigh}</strong> High (100-110 km/h) &bull; 
+        <strong style="color:#f87171">${specCritical}</strong> Severe (>110 km/h)
       `;
     }
   }
 
   // 4. TOP SPEEDERS SPOTLIGHT IN DRAWER
   if (topSpeedersList) {
-    const top4 = [...filtered].sort((a, b) => b.speed - a.speed).slice(0, 4);
+    const top4 = [...infractions].sort((a, b) => b.speed - a.speed).slice(0, 4);
     if (top4.length === 0) {
-      topSpeedersList.innerHTML = '<div class="empty-state">No vehicles logged.</div>';
+      topSpeedersList.innerHTML = '<div class="empty-state">No overspeeding vehicles logged.</div>';
     } else {
       topSpeedersList.innerHTML = top4.map((item, idx) => {
         const isExt = item.speed > 110;
-        const isVio = item.speed > threshold;
         return `
           <div class="speeder-row" data-lat="${item.lat}" data-lon="${item.lon}" title="Click to zoom vehicle on map">
             <div class="speeder-left">
@@ -361,7 +370,7 @@ function renderRadarMap() {
               <span class="speeder-sub">${item.org} &bull; ${item.time}</span>
             </div>
             <div class="speeder-right">
-              <span class="speeder-badge ${isExt ? 'danger' : (isVio ? 'warning' : 'badge-clean')}">
+              <span class="speeder-badge ${isExt ? 'danger' : 'warning'}">
                 ${item.speed.toFixed(1)} km/h
               </span>
               <i class="fa-solid fa-location-crosshairs speeder-zoom-icon"></i>
@@ -386,18 +395,16 @@ function renderRadarMap() {
   // 5. OPERATOR RISK SCOREBOARD IN DRAWER
   if (operatorRiskList) {
     if (sortedOrgs.length === 0) {
-      operatorRiskList.innerHTML = '<div class="empty-state">No fleet operators recorded.</div>';
+      operatorRiskList.innerHTML = '<div class="empty-state">No overspeeding fleet operators recorded.</div>';
     } else {
       operatorRiskList.innerHTML = sortedOrgs.slice(0, 4).map(([org, stats]) => {
-        const rate = stats.total > 0 ? Math.round(((stats.total - stats.violations) / stats.total) * 100) : 100;
-        const isClean = stats.violations === 0;
         return `
           <div class="operator-risk-row">
             <span class="op-name">${org}</span>
             <div class="op-stats">
-              <span class="op-ratio">${stats.violations}/${stats.total} Infractions</span>
-              <span class="op-badge ${isClean ? 'badge-clean' : 'badge-warn'}">
-                ${rate}% Compliance
+              <span class="op-ratio">${stats.violations} Infractions</span>
+              <span class="op-badge badge-warn">
+                Peak: ${stats.maxSpeed.toFixed(1)} km/h
               </span>
             </div>
           </div>
@@ -406,20 +413,20 @@ function renderRadarMap() {
     }
   }
 
-  // 6. SYNCHRONIZE LEGACY POPUPS
-  if (cardTotalUnits) cardTotalUnits.textContent = totalCount;
-  if (cardViolatingUnits) cardViolatingUnits.textContent = violationCount;
+  // 6. SYNCHRONIZE LEGACY POPUPS & GAUGES
+  if (cardTotalUnits) cardTotalUnits.textContent = distinctVehicles;
+  if (cardViolatingUnits) cardViolatingUnits.textContent = totalCount;
   if (cardMeanSpeed) cardMeanSpeed.textContent = `${meanSpeed} km/h`;
   if (cardPeakSpeed) cardPeakSpeed.textContent = `${peakSpeed.toFixed(1)} km/h`;
   if (fastestUnitLabel) fastestUnitLabel.textContent = fastestItem ? `${fastestItem.vehicle} (${peakSpeed.toFixed(1)} km/h)` : '--';
 
   const navViolationsCount = document.getElementById('navViolationsCount');
-  if (navViolationsCount) navViolationsCount.textContent = violationCount;
+  if (navViolationsCount) navViolationsCount.textContent = totalCount;
 
   if (violationsBadge) {
-    violationsBadge.textContent = `${violationCount} Flags`;
-    violationsBadge.style.background = violationCount > 0 ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.2)';
-    violationsBadge.style.color = violationCount > 0 ? '#f87171' : '#34d399';
+    violationsBadge.textContent = `${totalCount} Flags`;
+    violationsBadge.style.background = totalCount > 0 ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.2)';
+    violationsBadge.style.color = totalCount > 0 ? '#f87171' : '#34d399';
   }
 
   if (gaugeSpeedNum) gaugeSpeedNum.textContent = peakSpeed.toFixed(0);
@@ -427,7 +434,7 @@ function renderRadarMap() {
     const clampedPct = Math.min(Math.max((peakSpeed / 140), 0), 1);
     const offset = 264 - (clampedPct * 264);
     speedSvgRing.style.strokeDashoffset = offset;
-    speedSvgRing.style.stroke = peakSpeed > threshold ? '#ef4444' : '#10b981';
+    speedSvgRing.style.stroke = '#ef4444';
   }
 
   renderViolationsFeed(infractions);
@@ -493,10 +500,7 @@ function loadDefaultZingbusData() {
     { "Vehicle Number": "MH01EE8167", "L1-Org": "Euro Delhi", "Date": "02 Sept 2026", "Alert time": "11:51:30 pm", "Alert type": "Overspeeding", "Vehicle Speed (km/h)": 92.4, "Alert location": "POINT (77.2090 28.6139)" },
     { "Vehicle Number": "TN38DH9498", "L1-Org": "Booms Cab", "Date": "02 Sept 2026", "Alert time": "11:39:20 pm", "Alert type": "Overspeeding", "Vehicle Speed (km/h)": 91.5, "Alert location": "POINT (76.9558 11.0168)" },
     { "Vehicle Number": "KA03AP1837", "L1-Org": "Infants_TEPL", "Date": "02 Sept 2026", "Alert time": "11:25:00 pm", "Alert type": "Overspeeding", "Vehicle Speed (km/h)": 94.6, "Alert location": "POINT (77.5946 12.9716)" },
-    { "Vehicle Number": "MH12SX6507", "L1-Org": "Shree Maruthi", "Date": "02 Sept 2026", "Alert time": "11:20:15 pm", "Alert type": "Overspeeding", "Vehicle Speed (km/h)": 93.8, "Alert location": "POINT (73.8567 18.5204)" },
-    { "Vehicle Number": "HR55AW8029", "L1-Org": "Shoffr Delhi", "Date": "02 Sept 2026", "Alert time": "11:10:45 pm", "Alert type": "Normal", "Vehicle Speed (km/h)": 88.5, "Alert location": "POINT (77.0500 28.5500)" },
-    { "Vehicle Number": "DL1PD7823", "L1-Org": "Zingbus_Delhi", "Date": "02 Sept 2026", "Alert time": "11:05:00 pm", "Alert type": "Normal", "Vehicle Speed (km/h)": 72.1, "Alert location": "POINT (76.8000 29.6000)" },
-    { "Vehicle Number": "MH01EE8167", "L1-Org": "Euro Delhi", "Date": "02 Sept 2026", "Alert time": "11:00:00 pm", "Alert type": "Normal", "Vehicle Speed (km/h)": 65.4, "Alert location": "POINT (77.3000 28.5000)" }
+    { "Vehicle Number": "MH12SX6507", "L1-Org": "Shree Maruthi", "Date": "02 Sept 2026", "Alert time": "11:20:15 pm", "Alert type": "Overspeeding", "Vehicle Speed (km/h)": 93.8, "Alert location": "POINT (73.8567 18.5204)" }
   ];
 
   processTelemetryData(zingbusRecords);
@@ -567,7 +571,7 @@ if (chipTopOffender) {
    ========================================================================== */
 if (speedThresholdSlider) {
   speedThresholdSlider.addEventListener('input', (e) => {
-    state.statutoryThreshold = parseFloat(e.target.value);
+    state.statutoryThreshold = Math.max(90.0, parseFloat(e.target.value) || 90.0);
     if (threshDisplay) threshDisplay.textContent = `> ${state.statutoryThreshold.toFixed(0)} km/h`;
     renderRadarMap();
   });

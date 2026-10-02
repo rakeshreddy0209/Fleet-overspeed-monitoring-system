@@ -76,9 +76,9 @@
         <span class="chip-label"><i class="fa-solid fa-truck-fast"></i> FLEET</span>
         <span class="chip-val highlight" id="activeFleetCount">--</span>
       </div>
-      <div class="metric-chip" id="chipCompliance" title="Statutory Compliance Rate">
-        <span class="chip-label"><i class="fa-solid fa-shield-halved"></i> COMPLIANT</span>
-        <span class="chip-val highlight-emerald" id="complianceRateDisplay">--%</span>
+      <div class="metric-chip" id="chipCompliance" title="Critical Over-110 Infractions">
+        <span class="chip-label"><i class="fa-solid fa-triangle-exclamation"></i> SEVERE (>110)</span>
+        <span class="chip-val highlight-rose" id="complianceRateDisplay">--</span>
       </div>
       <div class="metric-chip" id="chipInfractions" title="Violations Detected">
         <span class="chip-label"><i class="fa-solid fa-triangle-exclamation"></i> VIOLATIONS</span>
@@ -127,7 +127,7 @@
         <div class="threshold-slider-inline">
           <span class="ctl-label"><i class="fa-solid fa-gauge-high"></i> THRESHOLD:</span>
           <span class="badge-threshold" id="threshDisplay">> 90 km/h</span>
-          <input type="range" id="speedThresholdSlider" min="80" max="160" step="1" value="90" />
+          <input type="range" id="speedThresholdSlider" min="90" max="150" step="1" value="90" />
         </div>
         <div class="org-selector-inline">
           <select id="orgFilterSelect" class="hud-select">
@@ -183,17 +183,17 @@
           <!-- 1. Top Insights KPI Strip -->
           <div class="drawer-kpi-row">
             <div class="drawer-kpi-item">
-              <span class="kpi-tag">TOTAL FLEET</span>
+              <span class="kpi-tag">TOTAL INFRACTION FLEET</span>
               <span class="kpi-num" id="drawerTotalUnits">--</span>
-              <span class="kpi-desc">Vehicles Active</span>
-            </div>
-            <div class="drawer-kpi-item kpi-accent-mint">
-              <span class="kpi-tag">COMPLIANT</span>
-              <span class="kpi-num text-emerald" id="drawerCompliantUnits">--</span>
-              <span class="kpi-desc" id="drawerCompliancePct">--% Rate</span>
+              <span class="kpi-desc">Violating Vehicles</span>
             </div>
             <div class="drawer-kpi-item kpi-accent-rose">
-              <span class="kpi-tag">STATUTORY INFRACTIONS</span>
+              <span class="kpi-tag">CRITICAL (>110)</span>
+              <span class="kpi-num text-rose" id="drawerCompliantUnits">--</span>
+              <span class="kpi-desc" id="drawerCompliancePct">Severe Overspeed</span>
+            </div>
+            <div class="drawer-kpi-item kpi-accent-rose">
+              <span class="kpi-tag">ACTIVE VIOLATIONS</span>
               <span class="kpi-num text-rose" id="drawerInfractionsUnits">--</span>
               <span class="kpi-desc" id="drawerInfractionThreshold">> 90 km/h</span>
             </div>
@@ -212,17 +212,17 @@
           <!-- 2. Speed Compliance Spectrum Bar -->
           <div class="spectrum-section">
             <div class="spectrum-header">
-              <span class="spectrum-title"><i class="fa-solid fa-gauge-simple-high"></i> SPEED COMPLIANCE SPECTRUM</span>
+              <span class="spectrum-title"><i class="fa-solid fa-gauge-simple-high"></i> OVERSPEED VELOCITY SPECTRUM (> 90 KM/H)</span>
               <div class="spectrum-legend">
-                <span class="legend-item"><span class="legend-dot dot-emerald"></span> Compliant (≤ threshold)</span>
-                <span class="legend-item"><span class="legend-dot dot-amber"></span> Warning (91-110 km/h)</span>
-                <span class="legend-item"><span class="legend-dot dot-rose"></span> Critical (> 110 km/h)</span>
+                <span class="legend-item"><span class="legend-dot dot-amber"></span> Moderate (90-100 km/h)</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#ef4444"></span> High (100-110 km/h)</span>
+                <span class="legend-item"><span class="legend-dot dot-rose"></span> Severe (> 110 km/h)</span>
               </div>
             </div>
             <div class="spectrum-bar-wrap">
-              <div class="spectrum-segment seg-compliant" id="specCompliantSeg" style="width: 70%;"></div>
-              <div class="spectrum-segment seg-warning" id="specWarningSeg" style="width: 20%;"></div>
-              <div class="spectrum-segment seg-critical" id="specCriticalSeg" style="width: 10%;"></div>
+              <div class="spectrum-segment seg-warning" id="specWarningSeg" style="width: 40%;"></div>
+              <div class="spectrum-segment" id="specHighSeg" style="width: 35%; background:#ef4444;"></div>
+              <div class="spectrum-segment seg-critical" id="specCriticalSeg" style="width: 25%;"></div>
             </div>
             <div class="spectrum-stats" id="spectrumStatsText">
               Loading speed distribution spectrum...
